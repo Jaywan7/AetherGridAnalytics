@@ -1,0 +1,5 @@
+{
+  "name": "AetherGrid Analytics",
+  "description": "A web-based analysis tool to transform large, raw numerical datasets into meaningful statistical insights. The MVP focuses on analyzing lottery-like data to identify patterns, 'hot' and 'cold' numbers, and other statistical anomalies from user-uploaded CSV files.",
+  "requestFramePermissions": []
+}
