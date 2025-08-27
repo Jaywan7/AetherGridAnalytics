@@ -32,7 +32,10 @@ const validateRow = (mainNumbers: number[], starNumbers: number[]): boolean => {
 };
 
 
-export const parseCSV = (csvText: string): { draws: Draw[], validRows: number, totalRows: number } => {
+export const parseCSV = async (
+    csvText: string,
+    onProgress: (progress: number) => void
+): Promise<{ draws: Draw[], validRows: number, totalRows: number }> => {
     const lines = csvText.trim().split('\n');
     const header = lines.shift()?.trim().toLowerCase();
 
@@ -43,8 +46,10 @@ export const parseCSV = (csvText: string): { draws: Draw[], validRows: number, t
     const draws: Draw[] = [];
     const totalRows = lines.length;
     let validRows = 0;
+    const batchSize = 1000; // Process in chunks to avoid freezing the UI
 
-    for (const line of lines) {
+    for (let i = 0; i < totalRows; i++) {
+        const line = lines[i];
         if (!line.trim()) continue;
 
         const values = line.split(',').map(v => v.trim());
@@ -75,6 +80,12 @@ export const parseCSV = (csvText: string): { draws: Draw[], validRows: number, t
             }
         } catch (e) {
             // Silently ignore rows that cause parsing errors
+        }
+
+        // After a batch, report progress and yield to the event loop
+        if ((i > 0 && i % batchSize === 0) || i === totalRows - 1) {
+            onProgress((i + 1) / totalRows);
+            await new Promise(resolve => setTimeout(resolve, 0)); // Yield to main thread
         }
     }
 

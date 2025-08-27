@@ -1,4 +1,6 @@
 
+export type AnalysisRegime = 'Hot Streak' | 'Volatile' | 'Stable' | 'Balanced';
+export type DateContext = 'CHRISTMAS' | 'EASTER_PERIOD' | 'SUMMER_HOLIDAY' | 'NEW_YEAR' | 'NONE';
 
 export interface Draw {
     drawDate: string;
@@ -22,6 +24,8 @@ export interface AetherScoreBreakdown {
     momentum?: number;
     clusterStrength?: number;
     stability?: number;
+    contextual?: number;
+    popularity?: number;
 }
 
 export interface AetherScoreResult {
@@ -55,6 +59,10 @@ export interface IntelligentCoupon {
     starNumbers: number[];
     score: number;
     justification: string;
+    confidence: {
+        level: 'High' | 'Medium' | 'Low';
+        justification: string;
+    };
 }
 
 export interface SeasonalPeriodData {
@@ -101,6 +109,19 @@ export interface MetaPatternAnalysis {
     correlationInsights: CorrelationInsight[];
 }
 
+export interface BiasAnalysis {
+    name: string;
+    observed: number; // percentage or value
+    expected: number; // percentage or value
+    conclusion: string;
+    unit: '%' | 'draws' | 'avg' | '';
+}
+
+export interface AntiPopularityAnalysis {
+    humanBiasAnalysis: BiasAnalysis[];
+    combinationBiasAnalysis: BiasAnalysis[];
+}
+
 export interface AnalysisResult {
     totalRows: number;
     validDraws: number;
@@ -115,9 +136,10 @@ export interface AnalysisResult {
     optimalWeights?: WeightConfiguration;
     regimeShiftDetected?: boolean;
     metaPatternAnalysis?: MetaPatternAnalysis;
+    antiPopularityAnalysis?: AntiPopularityAnalysis;
+    detectedRegime?: AnalysisRegime;
 }
 
-// FIX: Add missing type definitions to resolve import errors in components.
 export interface FrequencyData {
     number: number | string;
     count: number; // Renamed from observed for clarity
@@ -249,6 +271,7 @@ export interface PerformancePoint {
     trainingSize: number;
     avgMainHits: number;
     avgStarHits: number;
+    avgBaselineHits?: number;
 }
 
 export interface PerformanceLogItem {
@@ -262,6 +285,8 @@ export interface PerformanceLogItem {
     starHits: number;
     forecast_baseline_main?: number[];
     baselineMainHits?: number;
+    context?: DateContext;
+    averageWinnerRank?: number;
 }
 
 export interface HitProfile {
@@ -307,6 +332,8 @@ export interface HistoricalSuccessProfile {
     momentum: number;
     cluster: number;
     seasonal: number;
+    companion: number;
+    stability: number;
 }
 
 export interface PreDrawIndicator {
@@ -327,8 +354,11 @@ export interface WinnerProfile {
         hasMomentum: boolean;
         hasClusterStrength: boolean;
         isSeasonalHot: boolean;
+        isCompanionHot: boolean;
+        hasStability: boolean;
     };
     prevDrawSpread: number; 
+    prevDrawSum: number;
 }
 
 export interface HistoricalSuccessAnalysis {
@@ -365,8 +395,79 @@ export interface SeasonalTransitionAnalysis {
     leastVolatileMonth: string;
 }
 
+export interface RhythmAnalysisResult {
+    number: number;
+    averageDormancy: number;
+    dormancyStdDev: number; // Lower is more rhythmic
+    pulseStrength: number; // A normalized score (0-100)
+}
+
 export interface PatternTimingAnalysis {
     hotStreakAnalysis: HotStreakAnalysis;
     dormancyBreakAnalysis: DormancyBreakAnalysis;
     seasonalTransitionAnalysis: SeasonalTransitionAnalysis;
+    rhythmAnalysis: RhythmAnalysisResult[];
 }
+
+export interface ContextualPerformance {
+    context: DateContext;
+    draws: number;
+    modelAvgHits: number;
+    baselineAvgHits: number;
+    improvement: number | null; // Percentage or null if baseline is 0
+}
+
+export interface CulturalValidation {
+    name: string;
+    isConfirmed: boolean;
+    details: string;
+}
+
+export interface ValidationResult {
+    contextualPerformance: ContextualPerformance[];
+    culturalValidation: CulturalValidation[];
+}
+
+export type BacktestEvent = {
+    drawNumber: number;
+    type: 'Regime Shift Detected' | 'Weight Calibration';
+    label: string;
+};
+
+export interface FullAnalysisBundle {
+    analysisResult: AnalysisResult;
+    historicalSuccessAnalysis: HistoricalSuccessAnalysis;
+    patternTimingAnalysis: PatternTimingAnalysis;
+    validationResult: ValidationResult;
+    predictedNextDrawDate: Date | null;
+    performanceLog: PerformanceLogItem[];
+    performanceTimeline: PerformancePoint[];
+    performanceBreakdown: PerformanceBreakdown;
+    forecastPerformanceInsight: ForecastPerformanceInsight | null;
+    events: BacktestEvent[];
+}
+
+// The top-level bundle containing all analyses.
+export interface MegaAnalysisBundle {
+    total: FullAnalysisBundle;
+    tuesday: FullAnalysisBundle;
+    friday: FullAnalysisBundle;
+}
+
+export type AnalysisState =
+    | { status: 'idle' }
+    | { status: 'loading'; progress: { stage: string; percentage: number } }
+    | { status: 'completed'; data: MegaAnalysisBundle }
+    | { status: 'error'; message: string };
+
+// --- Web Worker Communication Types ---
+
+export type WorkerMessage =
+    | { type: 'progress'; payload: { stage: string; percentage: number } }
+    | { type: 'completed'; payload: MegaAnalysisBundle }
+    | { type: 'error'; payload: { message: string } };
+
+export type WorkerInput = {
+    draws: Draw[];
+    totalRowsInFile: number;
+};

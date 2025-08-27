@@ -1,4 +1,3 @@
-
 import type { Draw, MetaPatternAnalysis, HotColdTransition, DormancyBreakdownSignal, CorrelationInsight } from '../types';
 import { MAIN_NUMBER_MAX } from '../constants';
 
@@ -55,7 +54,8 @@ const analyzeHotColdTransitions = (draws: Draw[]): HotColdTransition[] => {
         });
     }
 
-    return transitions.sort((a, b) => b.transitions - a.transitions).slice(0, 5);
+    // FIX: Return the full list of transitions instead of slicing, to enable comprehensive stability analysis.
+    return transitions;
 };
 
 

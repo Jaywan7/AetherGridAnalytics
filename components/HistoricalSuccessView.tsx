@@ -5,6 +5,7 @@ import type { HistoricalSuccessAnalysis } from '../types';
 import { PatternCard } from './patterns/PatternCard';
 import { InfoIcon } from './icons/InfoIcon';
 import { SimpleBarChart } from './charts/SimpleBarChart';
+import { PatternLifecyclePanel } from './PatternLifecyclePanel';
 
 interface HistoricalSuccessViewProps {
     analysis: HistoricalSuccessAnalysis;
@@ -26,7 +27,7 @@ export const HistoricalSuccessView: React.FC<HistoricalSuccessViewProps> = ({ an
     return (
         <div className="space-y-8">
             <div>
-                <h2 className="text-2xl font-bold tracking-tight text-white">Historisk Succes Analyse</h2>
+                <h2 className="text-2xl font-bold tracking-tight text-white">Vindertals-DNA</h2>
                 <p className="mt-1 text-md text-brand-text-secondary max-w-4xl">
                     Denne analyse ser bagud for at forstå, hvilke betingelser der historisk har været til stede, når et tal er blevet trukket. Den afdækker den typiske "DNA" for et vindertal.
                 </p>
@@ -42,6 +43,8 @@ export const HistoricalSuccessView: React.FC<HistoricalSuccessViewProps> = ({ an
                     <p><span className="font-semibold text-brand-text-primary">Fortolkning:</span> En høj score i 'Varme' betyder, at tal, der er trukket ofte, har en tendens til at blive trukket igen. En høj score i 'Overdue' tyder på, at spillet favoriserer tal, der vender tilbage til deres gennemsnitlige frekvens.</p>
                 </div>
             </PatternCard>
+
+            <PatternLifecyclePanel historicalSuccessAnalysis={analysis} />
 
             <PatternCard 
                 title="Pre-Draw Indicators: Optakt til Succes" 

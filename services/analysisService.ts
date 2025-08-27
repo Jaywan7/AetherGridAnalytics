@@ -12,6 +12,7 @@ import {
     STAR_POOL_EVEN,
     STAR_POOL_ODD,
 } from '../constants';
+import { analyzeAntiPopularity } from './antiPopularityService';
 
 const getRecencyWeight = (drawIndex: number, totalDraws: number): number => {
     if (totalDraws <= 1) return 1;
@@ -35,7 +36,7 @@ const factorial = (n: number): number => {
     return result;
 };
 
-const combinations = (n: number, k: number): number => {
+const binomialCombinations = (n: number, k: number): number => {
     if (k < 0 || k > n) {
         return 0;
     }
@@ -203,12 +204,12 @@ const analyzeStarEvenOdd = (draws: Draw[]): PatternAnalysis['starEvenOddAnalysis
     });
 
     const total = totalWeight > 0 ? totalWeight : 1;
-    const totalCombos = combinations(STAR_NUMBER_MAX, STAR_NUMBER_COUNT);
+    const totalCombos = binomialCombinations(STAR_NUMBER_MAX, STAR_NUMBER_COUNT);
     
     return {
         evenOddDistribution: [
-            { combination: 'Even/Even', percentage: (evenEven / total) * 100, theoretical: combinations(STAR_POOL_EVEN, 2) / totalCombos },
-            { combination: 'Odd/Odd', percentage: (oddOdd / total) * 100, theoretical: combinations(STAR_POOL_ODD, 2) / totalCombos },
+            { combination: 'Even/Even', percentage: (evenEven / total) * 100, theoretical: binomialCombinations(STAR_POOL_EVEN, 2) / totalCombos },
+            { combination: 'Odd/Odd', percentage: (oddOdd / total) * 100, theoretical: binomialCombinations(STAR_POOL_ODD, 2) / totalCombos },
             { combination: 'Even/Odd', percentage: (evenOdd / total) * 100, theoretical: (STAR_POOL_EVEN * STAR_POOL_ODD) / totalCombos },
         ]
     };
@@ -493,13 +494,13 @@ export const analyzeData = (draws: Draw[], totalRows: number): Omit<AnalysisResu
     });
 
     // --- Analysis 2: Lige/Ulige Fordeling (Hovedtal) - Unweighted ---
-    const totalMainCombos = combinations(MAIN_NUMBER_MAX, MAIN_NUMBER_COUNT);
+    const totalMainCombos = binomialCombinations(MAIN_NUMBER_MAX, MAIN_NUMBER_COUNT);
     const evenOddPatterns = [];
     for (let i = 0; i <= MAIN_NUMBER_COUNT; i++) {
         const odd = i;
         const even = MAIN_NUMBER_COUNT - odd;
         const observed = mainOddCounts[i];
-        const expected = (combinations(MAIN_POOL_ODD, odd) * combinations(MAIN_POOL_EVEN, even) / totalMainCombos) * N;
+        const expected = (binomialCombinations(MAIN_POOL_ODD, odd) * binomialCombinations(MAIN_POOL_EVEN, even) / totalMainCombos) * N;
         evenOddPatterns.push({
             name: `${odd} ulige, ${even} lige`,
             observed,
@@ -551,6 +552,8 @@ export const analyzeData = (draws: Draw[], totalRows: number): Omit<AnalysisResu
     const starNumberFrequencies: FrequencyData[] = Array.from(starCounts.entries())
         .map(([number, count]) => ({ number, count, observed: count }));
 
+    const antiPopularityAnalysis = analyzeAntiPopularity(draws);
+
     return {
         totalRows,
         validDraws,
@@ -558,6 +561,7 @@ export const analyzeData = (draws: Draw[], totalRows: number): Omit<AnalysisResu
         patternAnalysis,
         mainNumberFrequencies,
         starNumberFrequencies,
+        antiPopularityAnalysis,
     };
 };
 

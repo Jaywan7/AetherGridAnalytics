@@ -1,10 +1,14 @@
-
-import type { Draw, PerformancePoint, PerformanceLogItem, WeightConfiguration, PerformanceBreakdown, HistoricalSuccessAnalysis, WinnerProfile, HistoricalSuccessProfile, PreDrawIndicator } from '../types';
+import type { Draw, PerformancePoint, PerformanceLogItem, WeightConfiguration, PerformanceBreakdown, HistoricalSuccessAnalysis, WinnerProfile, HistoricalSuccessProfile, PreDrawIndicator, AnalysisRegime, DateContext, BacktestEvent } from '../types';
 import { analyzeData } from './analysisService';
 import { calculateAdaptiveAetherScores } from './aetherScoreService';
 import { analyzeSeasonalPatterns } from './seasonalityService';
 import { analyzeMetaPatterns } from './metaPatternService';
-import { recalibrateWeightsFromHistory } from './continuousLearningService';
+import { recalibrateWeightsFromHistory, detectRegimeShift } from './continuousLearningService';
+import { calculateHitProfile } from './historicalSuccessService';
+import { analyzePatternTiming } from './patternTimingService';
+import { getCurrentContext } from './specialDatesService';
+// FIX: Import MAIN_NUMBER_MAX for stability analysis calculation.
+import { MAIN_NUMBER_MAX } from '../constants';
 
 // --- Helper Functions ---
 const getAverage = (arr: number[]): number => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -14,7 +18,12 @@ const getDrawSpread = (draw: Draw): number => {
     return Math.max(...draw.mainNumbers) - Math.min(...draw.mainNumbers);
 };
 
-const getDateInfo = (dateString: string): { month: number, quarter: number } | null => {
+const getDrawSum = (draw: Draw): number => {
+    if (draw.mainNumbers.length === 0) return 0;
+    return draw.mainNumbers.reduce((a, b) => a + b, 0);
+};
+
+const _getDateInfo = (dateString: string): { month: number, quarter: number } | null => {
     let date: Date | null = null;
     const trimmedDateString = dateString.trim();
 
@@ -63,7 +72,7 @@ const analyzePerformanceLog = (performanceLog: PerformanceLogItem[]): Performanc
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     for (const item of performanceLog) {
-        const dateInfo = getDateInfo(item.drawDate);
+        const dateInfo = _getDateInfo(item.drawDate);
         if (!dateInfo) continue;
         
         const month = monthNames[dateInfo.month];
@@ -97,59 +106,68 @@ const analyzePerformanceLog = (performanceLog: PerformanceLogItem[]): Performanc
 
 const createFullSuccessAnalysis = (winnerProfiles: WinnerProfile[], draws: Draw[]): HistoricalSuccessAnalysis => {
     if (winnerProfiles.length === 0) {
-        return { hitProfile: { hot: 0, cold: 0, overdue: 0, hotZone: 0, momentum: 0, cluster: 0, seasonal: 0 }, preDrawIndicators: [], totalAnalyzedHits: 0, winnerProfiles: [] };
+        // FIX: Add missing companion and stability properties
+        return { hitProfile: { hot: 0, cold: 0, overdue: 0, hotZone: 0, momentum: 0, cluster: 0, seasonal: 0, companion: 0, stability: 0 }, preDrawIndicators: [], totalAnalyzedHits: 0, winnerProfiles: [] };
     }
 
     const totalAnalyzedHits = winnerProfiles.length;
-    const hitProfileCounter: { [key in keyof HistoricalSuccessProfile]: number } = { hot: 0, cold: 0, overdue: 0, hotZone: 0, momentum: 0, cluster: 0, seasonal: 0 };
-    winnerProfiles.forEach(wp => {
-        if (wp.profile.isHot) hitProfileCounter.hot++;
-        if (wp.profile.isCold) hitProfileCounter.cold++;
-        if (wp.profile.isOverdue) hitProfileCounter.overdue++;
-        if (wp.profile.isInHotZone) hitProfileCounter.hotZone++;
-        if (wp.profile.hasMomentum) hitProfileCounter.momentum++;
-        if (wp.profile.hasClusterStrength) hitProfileCounter.cluster++;
-        if (wp.profile.isSeasonalHot) hitProfileCounter.seasonal++;
-    });
-
-    const hitProfile: HistoricalSuccessProfile = {
-        hot: (hitProfileCounter.hot / totalAnalyzedHits) * 100,
-        cold: (hitProfileCounter.cold / totalAnalyzedHits) * 100,
-        overdue: (hitProfileCounter.overdue / totalAnalyzedHits) * 100,
-        hotZone: (hitProfileCounter.hotZone / totalAnalyzedHits) * 100,
-        momentum: (hitProfileCounter.momentum / totalAnalyzedHits) * 100,
-        cluster: (hitProfileCounter.cluster / totalAnalyzedHits) * 100,
-        seasonal: (hitProfileCounter.seasonal / totalAnalyzedHits) * 100,
-    };
+    const hitProfile = calculateHitProfile(winnerProfiles);
 
     const preDrawIndicators: PreDrawIndicator[] = [];
     const globalAvgSpread = getAverage(draws.map(getDrawSpread));
+    const globalAvgSum = getAverage(draws.map(getDrawSum));
     
-    const indicatorSpreads: { [key in keyof HistoricalSuccessProfile]: number[] } = {
-        hot: [], cold: [], overdue: [], hotZone: [], momentum: [], cluster: [], seasonal: []
-    };
+    // FIX: Add missing companion and stability properties
+    const indicatorSpreads: { [key in keyof HistoricalSuccessProfile]: number[] } = { hot: [], cold: [], overdue: [], hotZone: [], momentum: [], cluster: [], seasonal: [], companion: [], stability: [] };
+    // FIX: Add missing companion and stability properties
+    const indicatorSums: { [key in keyof HistoricalSuccessProfile]: number[] } = { hot: [], cold: [], overdue: [], hotZone: [], momentum: [], cluster: [], seasonal: [], companion: [], stability: [] };
+
     winnerProfiles.forEach(wp => {
-        if (wp.profile.isHot) indicatorSpreads.hot.push(wp.prevDrawSpread);
-        if (wp.profile.isCold) indicatorSpreads.cold.push(wp.prevDrawSpread);
-        if (wp.profile.isOverdue) indicatorSpreads.overdue.push(wp.prevDrawSpread);
-        if (wp.profile.isSeasonalHot) indicatorSpreads.seasonal.push(wp.prevDrawSpread);
+        const keys: (keyof HistoricalSuccessProfile)[] = [];
+        if (wp.profile.isHot) keys.push('hot');
+        if (wp.profile.isCold) keys.push('cold');
+        if (wp.profile.isOverdue) keys.push('overdue');
+        if (wp.profile.isSeasonalHot) keys.push('seasonal');
+        // FIX: Add checks for new profile properties
+        if (wp.profile.isCompanionHot) keys.push('companion');
+        if (wp.profile.hasStability) keys.push('stability');
+
+        keys.forEach(key => {
+            indicatorSpreads[key].push(wp.prevDrawSpread);
+            indicatorSums[key].push(wp.prevDrawSum);
+        });
     });
 
     const generateIndicator = (key: keyof HistoricalSuccessProfile, name: string) => {
+        // Spread Analysis
         const spreads = indicatorSpreads[key];
-        if (spreads.length < 20) return;
-
-        const avgSpread = getAverage(spreads);
-        const deviation = ((avgSpread - globalAvgSpread) / globalAvgSpread) * 100;
+        if (spreads.length >= 20) {
+            const avgSpread = getAverage(spreads);
+            const deviation = ((avgSpread - globalAvgSpread) / globalAvgSpread) * 100;
+            if (Math.abs(deviation) > 5) {
+                const direction = deviation > 0 ? "højere" : "lavere";
+                const implication = deviation > 0 ? "mere 'kaotiske' trækninger" : "mere 'fokuserede' trækninger";
+                preDrawIndicators.push({
+                    title: `Spredning før et '${name}' Tal Rammer`,
+                    insight: `Trækninger før et '${name}' hit har en gennemsnitlig spredning på ${avgSpread.toFixed(1)}, ${Math.abs(deviation).toFixed(0)}% ${direction} end normalen. Dette indikerer, at ${implication} 'forbereder' denne type hit.`,
+                    strength: 'Moderate'
+                });
+            }
+        }
         
-        if (Math.abs(deviation) > 5) {
-            const direction = deviation > 0 ? "højere" : "lavere";
-            const implication = deviation > 0 ? "mere 'kaotiske' trækninger" : "mere 'fokuserede' trækninger";
-            preDrawIndicators.push({
-                title: `Trækningstype før et '${name}' Tal Rammer`,
-                insight: `Trækninger, der kommer lige før et '${name}' tal bliver trukket, har en gennemsnitlig spredning på ${avgSpread.toFixed(1)}, hvilket er ${Math.abs(deviation).toFixed(0)}% ${direction} end det globale gennemsnit. Dette kan indikere, at ${implication} 'forbereder' denne type hit.`,
-                strength: 'Moderate'
-            });
+        // Sum Analysis
+        const sums = indicatorSums[key];
+        if (sums.length >= 20) {
+            const avgSum = getAverage(sums);
+            const deviation = ((avgSum - globalAvgSum) / globalAvgSum) * 100;
+            if (Math.abs(deviation) > 2) {
+                const direction = deviation > 0 ? "højere" : "lavere";
+                preDrawIndicators.push({
+                    title: `Sum før et '${name}' Tal Rammer`,
+                    insight: `Trækninger før et '${name}' hit har en gennemsnitlig sum på ${avgSum.toFixed(0)}, ${Math.abs(deviation).toFixed(1)}% ${direction} end normalen.`,
+                    strength: 'Weak'
+                });
+            }
         }
     };
     
@@ -157,6 +175,9 @@ const createFullSuccessAnalysis = (winnerProfiles: WinnerProfile[], draws: Draw[
     generateIndicator('cold', 'Koldt');
     generateIndicator('overdue', 'Overdue');
     generateIndicator('seasonal', 'Sæsonbestemt');
+    // FIX: Add indicator generation for new properties
+    generateIndicator('companion', 'Følgetal');
+    generateIndicator('stability', 'Stabilt');
 
     return { hitProfile, preDrawIndicators, totalAnalyzedHits, winnerProfiles };
 };
@@ -166,74 +187,144 @@ const createFullSuccessAnalysis = (winnerProfiles: WinnerProfile[], draws: Draw[
  * @param draws An array of all historical draws, chronologically sorted.
  * @returns An object containing performance metrics, the final historical success analysis, and the final optimized weights.
  */
-export const runSequentialBacktest = (draws: Draw[]): { 
+export const runSequentialBacktest = async (
+    draws: Draw[],
+    onProgress: (progress: number) => void
+): Promise<{ 
     performanceTimeline: PerformancePoint[], 
     performanceLog: PerformanceLogItem[], 
     performanceBreakdown: PerformanceBreakdown,
     historicalSuccessAnalysis: HistoricalSuccessAnalysis,
-    optimalWeights: WeightConfiguration
-} => {
+    optimalWeights: WeightConfiguration,
+    events: BacktestEvent[],
+}> => {
     const initialWindowSize = 100;
     const emptyResult = {
         performanceTimeline: [],
         performanceLog: [],
         performanceBreakdown: { abTest: { aetherTotalHits: 0, baselineTotalHits: 0, improvementPercentage: 0 }, seasonal: { monthly: [], quarterly: [] } },
-        historicalSuccessAnalysis: { hitProfile: { hot: 0, cold: 0, overdue: 0, hotZone: 0, momentum: 0, cluster: 0, seasonal: 0 }, preDrawIndicators: [], totalAnalyzedHits: 0, winnerProfiles: [] },
-        optimalWeights: { frequency: 0.25, dormancy: 0.20, zone: 0.10, companion: 0.05, seasonal: 0.10, momentum: 0.15, clusterStrength: 0.10, stability: 0.05 }
+        // FIX: Add missing companion and stability properties
+        historicalSuccessAnalysis: { hitProfile: { hot: 0, cold: 0, overdue: 0, hotZone: 0, momentum: 0, cluster: 0, seasonal: 0, companion: 0, stability: 0 }, preDrawIndicators: [], totalAnalyzedHits: 0, winnerProfiles: [] },
+        optimalWeights: { frequency: 0.25, dormancy: 0.20, zone: 0.10, companion: 0.05, seasonal: 0.10, momentum: 0.15, clusterStrength: 0.10, stability: 0.05 },
+        events: [],
     };
 
     if (draws.length < initialWindowSize + 1) {
+        onProgress(1); // Complete immediately if nothing to do
         return emptyResult;
     }
 
     const performanceLog: PerformanceLogItem[] = [];
     const winnerProfiles: WinnerProfile[] = [];
+    const events: BacktestEvent[] = [];
+    let lastRegimeShiftState = false;
 
     let adaptiveWeights: WeightConfiguration = { frequency: 0.25, dormancy: 0.20, zone: 0.10, companion: 0.05, seasonal: 0.10, momentum: 0.15, clusterStrength: 0.10, stability: 0.05 };
     const recalibrationInterval = 20;
+    const totalSteps = draws.length - initialWindowSize;
 
     for (let i = initialWindowSize; i < draws.length; i++) {
         const trainingData = draws.slice(0, i);
         const targetDraw = draws[i];
         const prevDraw = draws[i - 1];
 
-        // --- DYNAMIC RECALIBRATION ---
+        // --- DYNAMIC RECALIBRATION & EVENT DETECTION ---
+        let tempSuccessAnalysis: HistoricalSuccessAnalysis | null = null;
         if ((i - initialWindowSize) > 0 && (i - initialWindowSize) % recalibrationInterval === 0 && winnerProfiles.length > 20) {
-            const tempSuccessAnalysis = createFullSuccessAnalysis(winnerProfiles, trainingData);
-            adaptiveWeights = recalibrateWeightsFromHistory(tempSuccessAnalysis);
+            tempSuccessAnalysis = createFullSuccessAnalysis(winnerProfiles, trainingData);
+            events.push({
+                drawNumber: i + 1,
+                type: 'Weight Calibration',
+                label: 'Vægt-Kalibrering',
+            });
+
+            // Prioritize recent performance for weight calibration if enough data exists
+            if (winnerProfiles.length > 50) {
+                 const recentWinnerProfiles = winnerProfiles.slice(-250);
+                 const recentSuccessAnalysis = createFullSuccessAnalysis(recentWinnerProfiles, trainingData);
+                 adaptiveWeights = recalibrateWeightsFromHistory(recentSuccessAnalysis);
+            } else {
+                 // Fallback to full history if not enough recent data
+                 adaptiveWeights = recalibrateWeightsFromHistory(tempSuccessAnalysis);
+            }
         }
         
-        // Run full analysis on the expanding window of training data
+        const currentRegimeShiftState = detectRegimeShift(trainingData);
+        if (currentRegimeShiftState && !lastRegimeShiftState) {
+            events.push({
+                drawNumber: i + 1,
+                type: 'Regime Shift Detected',
+                label: 'Regime-Skift Detekteret',
+            });
+        }
+        lastRegimeShiftState = currentRegimeShiftState;
+
         const historicalAnalysis = analyzeData(trainingData, trainingData.length);
         const seasonalAnalysis = analyzeSeasonalPatterns(trainingData);
         const metaPatternAnalysis = analyzeMetaPatterns(trainingData);
         const nextDrawDateForForecast = new Date(targetDraw.drawDate);
         
-        // Generate forecast with the current (potentially recalibrated) weights
-        const forecast = calculateAdaptiveAetherScores(historicalAnalysis, trainingData, seasonalAnalysis, metaPatternAnalysis, nextDrawDateForForecast, adaptiveWeights);
+        const timingAnalysis = analyzePatternTiming(trainingData);
+        let detectedRegime: AnalysisRegime = 'Balanced';
+        if (timingAnalysis) {
+            const { hotStreakAnalysis, seasonalTransitionAnalysis } = timingAnalysis;
+
+            if (hotStreakAnalysis.averageStreakDuration > 4.0) {
+                detectedRegime = 'Hot Streak';
+            } else {
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const nextMonthName = monthNames[nextDrawDateForForecast.getUTCMonth()];
+                const transition = seasonalTransitionAnalysis.monthlyTransitions.find(t => t.toPeriod === nextMonthName);
+                if (transition) {
+                    if (transition.dissimilarityScore > 0.6) {
+                        detectedRegime = 'Volatile';
+                    } else if (transition.dissimilarityScore < 0.3) {
+                        detectedRegime = 'Stable';
+                    }
+                }
+            }
+        }
+
+        const forecast = calculateAdaptiveAetherScores(
+            historicalAnalysis, 
+            trainingData, 
+            seasonalAnalysis, 
+            metaPatternAnalysis, 
+            nextDrawDateForForecast, 
+            adaptiveWeights,
+            tempSuccessAnalysis,
+            detectedRegime
+        );
         const top10MainForecast = forecast.mainNumberScores.slice(0, 10).map(s => s.number);
         const top5StarForecast = forecast.starNumberScores.slice(0, 5).map(s => s.number);
         
-        // Validate against the target draw
         const mainHits = targetDraw.mainNumbers.filter(num => top10MainForecast.includes(num)).length;
         const starHits = targetDraw.starNumbers.filter(num => top5StarForecast.includes(num)).length;
 
-        // A/B Test: Baseline Model (simple frequency)
         const baseline_top10_main = historicalAnalysis.mainNumberFrequencies
             .sort((a, b) => b.count - a.count)
             .slice(0, 10)
             .map(f => f.number as number);
         const baselineMainHits = targetDraw.mainNumbers.filter(num => baseline_top10_main.includes(num)).length;
         
+        const { context } = getCurrentContext(nextDrawDateForForecast);
+
+        // Calculate average winner rank for predictability index
+        const winnerRanks = targetDraw.mainNumbers.map(winner => {
+            const found = forecast.mainNumberScores.find(s => s.number === winner);
+            return found ? found.rank : 51; // 51 for not found in top 50
+        });
+        const averageWinnerRank = getAverage(winnerRanks);
+
         performanceLog.push({
             drawNumber: i + 1, drawDate: targetDraw.drawDate, forecast_top10_main: top10MainForecast, forecast_top5_star: top5StarForecast,
             actual_main: targetDraw.mainNumbers, actual_star: targetDraw.starNumbers, mainHits, starHits,
-            forecast_baseline_main: baseline_top10_main, baselineMainHits,
+            forecast_baseline_main: baseline_top10_main, baselineMainHits, context, averageWinnerRank
         });
 
         // --- Update Winner Profiles for next recalibration ---
         const { mainNumberFrequencies, patternAnalysis } = historicalAnalysis;
-        const mainFreqSorted = mainNumberFrequencies.sort((a, b) => a.count - b.count);
+        const mainFreqSorted = mainNumberFrequencies.sort((a, b) => a.count - a.count);
         const hotThreshold = Math.floor(mainFreqSorted.length * 0.67);
         const coldThreshold = Math.floor(mainFreqSorted.length * 0.33);
         const hotNumbers = new Set(mainFreqSorted.slice(hotThreshold).map(f => f.number as number));
@@ -242,7 +333,7 @@ export const runSequentialBacktest = (draws: Draw[]): {
         const [hotZoneMin, hotZoneMax] = patternAnalysis.zoneAnalysis.hotZone.split('-').map(Number);
         const trendingNumbers = new Set(patternAnalysis.momentumAnalysis.filter(m => m.momentumScore > 0).map(m => m.number));
         const strongClusterNumbers = new Set(patternAnalysis.clusterStrengthAnalysis.filter(c => c.clusterScore > 0).map(c => c.number));
-        const targetDrawDateInfo = getDateInfo(targetDraw.drawDate);
+        const targetDrawDateInfo = _getDateInfo(targetDraw.drawDate);
         let seasonalHotNumbers = new Set<number>();
         if (targetDrawDateInfo) {
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -250,25 +341,59 @@ export const runSequentialBacktest = (draws: Draw[]): {
             const monthlyData = seasonalAnalysis.monthly[currentMonthName] || [];
             seasonalHotNumbers = new Set(monthlyData.slice(0, Math.floor(monthlyData.length * 0.2)).map(item => item.number));
         }
+        
+        // FIX: Add logic to determine companion hotness and stability
+        const stableNumbers = new Set<number>();
+        if(metaPatternAnalysis?.hotColdTransitions) {
+            const sortedTransitions = [...metaPatternAnalysis.hotColdTransitions].sort((a,b) => a.transitions - b.transitions);
+            // Stable numbers are those with few transitions (e.g., bottom 40%)
+            sortedTransitions.slice(0, Math.floor(MAIN_NUMBER_MAX * 0.4)).forEach(t => stableNumbers.add(t.number));
+        }
+
+        const hotCompanionNumbers = new Set<number>();
+        const companionData = historicalAnalysis.patternAnalysis.companionAnalysis.companionData;
+        hotNumbers.forEach(hotNum => {
+            const companions = companionData[hotNum as number] || [];
+            // consider top 3 companions of each hot number as also hot
+            companions.slice(0, 3).forEach(comp => hotCompanionNumbers.add(comp.number));
+        });
+
+        const prevDrawSpread = getDrawSpread(prevDraw);
+        const prevDrawSum = getDrawSum(prevDraw);
 
         for (const num of targetDraw.mainNumbers) {
             winnerProfiles.push({
                 drawNumber: i + 1, drawDate: targetDraw.drawDate, winningNumber: num,
+                // FIX: Add missing isCompanionHot and hasStability properties
                 profile: {
                     isHot: hotNumbers.has(num), isCold: coldNumbers.has(num), isOverdue: overdueNumbers.has(num),
                     isInHotZone: num >= hotZoneMin && num <= hotZoneMax, hasMomentum: trendingNumbers.has(num),
                     hasClusterStrength: strongClusterNumbers.has(num), isSeasonalHot: seasonalHotNumbers.has(num),
+                    isCompanionHot: hotCompanionNumbers.has(num),
+                    hasStability: stableNumbers.has(num),
                 },
-                prevDrawSpread: getDrawSpread(prevDraw),
+                prevDrawSpread,
+                prevDrawSum,
             });
+        }
+        
+        const currentStep = i - initialWindowSize;
+        // Update progress every 10 steps to reduce overhead, and always on the last step.
+        if (currentStep % 10 === 0 || i === draws.length - 1) {
+            onProgress((currentStep + 1) / totalSteps);
+            await new Promise(resolve => setTimeout(resolve, 0)); // Yield to main thread
         }
     }
 
     const performanceBreakdown = analyzePerformanceLog(performanceLog);
     const historicalSuccessAnalysis = createFullSuccessAnalysis(winnerProfiles, draws);
-    const finalOptimalWeights = recalibrateWeightsFromHistory(historicalSuccessAnalysis);
     
-    // Generate a summarized timeline from the detailed log for the chart
+    // Final calibration uses the most recent data available from the entire backtest run
+    const finalRecentWinnerProfiles = winnerProfiles.slice(-250);
+    const finalOptimalWeights = recalibrateWeightsFromHistory(
+        createFullSuccessAnalysis(finalRecentWinnerProfiles.length > 50 ? finalRecentWinnerProfiles : winnerProfiles, draws)
+    );
+    
     const performanceTimeline: PerformancePoint[] = [];
     const validatedDrawsCount = performanceLog.length;
     if (validatedDrawsCount > 0) {
@@ -283,15 +408,17 @@ export const runSequentialBacktest = (draws: Draw[]): {
             if (batch.length > 0) {
                 const totalMainHits = batch.reduce((sum, item) => sum + item.mainHits, 0);
                 const totalStarHits = batch.reduce((sum, item) => sum + item.starHits, 0);
+                const totalBaselineHits = batch.reduce((sum, item) => sum + (item.baselineMainHits || 0), 0);
                 
                 performanceTimeline.push({
                     trainingSize: initialWindowSize + start,
                     avgMainHits: totalMainHits / batch.length,
                     avgStarHits: totalStarHits / batch.length,
+                    avgBaselineHits: totalBaselineHits / batch.length,
                 });
             }
         }
     }
 
-    return { performanceTimeline, performanceLog, performanceBreakdown, historicalSuccessAnalysis, optimalWeights: finalOptimalWeights };
+    return { performanceTimeline, performanceLog, performanceBreakdown, historicalSuccessAnalysis, optimalWeights: finalOptimalWeights, events };
 };

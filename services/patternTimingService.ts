@@ -1,8 +1,8 @@
-
 import type { Draw, PatternTimingAnalysis, HotStreakAnalysis, DormancyBreakAnalysis, SeasonalTransitionAnalysis, SeasonalTransition } from '../types';
 import { MAIN_NUMBER_MAX } from '../constants';
 import { analyzeData } from './analysisService';
 import { analyzeSeasonalPatterns } from './seasonalityService';
+import { analyzeNumberRhythm } from './rhythmService';
 
 const getAverage = (arr: number[]): number => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
@@ -169,5 +169,6 @@ export const analyzePatternTiming = (draws: Draw[]): PatternTimingAnalysis | nul
         hotStreakAnalysis: analyzeHotStreaks(draws),
         dormancyBreakAnalysis: analyzeDormancyBreaks(draws),
         seasonalTransitionAnalysis: analyzeSeasonalTransitions(draws),
+        rhythmAnalysis: analyzeNumberRhythm(draws),
     };
 };

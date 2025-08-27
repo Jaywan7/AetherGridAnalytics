@@ -1,6 +1,7 @@
 
 import type { AnalysisResult, StrategyResult, StrategyCoupon } from '../types';
 import { MAIN_NUMBER_MAX, STAR_NUMBER_MAX, MAIN_NUMBER_COUNT, STAR_NUMBER_COUNT } from '../constants';
+import { getPopularNumbers } from './specialDatesService';
 
 // ===================================
 // Helper Functions
@@ -233,6 +234,66 @@ function generateCompanionCoupons(analysis: AnalysisResult): StrategyResult {
     };
 }
 
+function generateAntiPopularityCoupons(analysis: AnalysisResult): StrategyResult {
+    const year = new Date().getFullYear();
+    const popularNumbers = getPopularNumbers(year);
+
+    const mainFreqMap = new Map(analysis.mainNumberFrequencies.map(f => [f.number, f.count]));
+    const starFreqMap = new Map(analysis.starNumberFrequencies.map(f => [f.number, f.count]));
+
+    // 1. Create pool of UNPOPULAR main numbers
+    const unpopularMainPool = Array.from({ length: MAIN_NUMBER_MAX }, (_, i) => i + 1)
+        .filter(num => !popularNumbers.main.has(num));
+
+    // 2. Select the "hottest" among the unpopular numbers
+    const hotUnpopularMain = unpopularMainPool
+        .sort((a, b) => (mainFreqMap.get(b) || 0) - (mainFreqMap.get(a) || 0))
+        .slice(0, 15);
+
+    // 3. Create pool of UNPOPULAR star numbers
+    const unpopularStarPool = Array.from({ length: STAR_NUMBER_MAX }, (_, i) => i + 1)
+        .filter(num => !popularNumbers.star.has(num));
+
+    // 4. Select the "hottest" among the unpopular stars
+    const hotUnpopularStars = unpopularStarPool
+        .sort((a, b) => (starFreqMap.get(b) || 0) - (starFreqMap.get(a) || 0))
+        .slice(0, 5);
+        
+    if (hotUnpopularMain.length < MAIN_NUMBER_COUNT || hotUnpopularStars.length < STAR_NUMBER_COUNT) {
+        return { title: "", description: "", coupons: [] };
+    }
+
+    // 5. Generate and score main number candidates
+    const mainCandidates = combinations(hotUnpopularMain, MAIN_NUMBER_COUNT);
+    const scoredMainCandidates = mainCandidates.map(coupon => {
+        let score = coupon.reduce((acc, num) => acc + (mainFreqMap.get(num) || 0), 0);
+        // Bonus for having more numbers > 31
+        score += coupon.filter(n => n > 31).length * 50;
+        return { coupon, score };
+    }).sort((a, b) => b.score - a.score);
+
+    // 6. Generate star number candidates
+    const starCandidates = combinations(hotUnpopularStars, STAR_NUMBER_COUNT);
+    
+    // 7. Combine and build final coupons
+    const coupons: StrategyCoupon[] = [];
+    for (let i = 0; i < Math.min(10, scoredMainCandidates.length); i++) {
+        const main = scoredMainCandidates[i].coupon;
+        const star = starCandidates[i % starCandidates.length];
+        coupons.push({
+            rank: i + 1,
+            ...createCoupon(main, star),
+            insight: "Kombinerer statistisk stærke tal, der er mindre populære, for at øge den potentielle gevinst ved at undgå at dele med andre.",
+        });
+    }
+
+    return {
+        title: "Anti-Popularitets Strategi",
+        description: "Fokuserer på tal, som folk sjældent spiller (f.eks. tal over 31), for at maksimere potentielle gevinster.",
+        coupons,
+    };
+}
+
 
 export const generateAllStrategies = (analysisResult: AnalysisResult): StrategyResult[] => {
   const strategies = [
@@ -240,6 +301,7 @@ export const generateAllStrategies = (analysisResult: AnalysisResult): StrategyR
     generateContrarianCoupons(analysisResult),
     generateBalancedCoupons(analysisResult),
     generateCompanionCoupons(analysisResult),
+    generateAntiPopularityCoupons(analysisResult),
   ].filter(s => s.coupons.length > 0);
   
   return strategies;

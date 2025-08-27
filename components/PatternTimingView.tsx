@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import type { PatternTimingAnalysis } from '../types';
 import { PatternCard } from './patterns/PatternCard';
@@ -7,13 +5,14 @@ import { SimpleBarChart } from './charts/SimpleBarChart';
 import { InfoIcon } from './icons/InfoIcon';
 import { ClockIcon } from './icons/ClockIcon';
 import { StatCard } from './StatCard';
+import { NumberRhythmPanel } from './NumberRhythmPanel';
 
 interface PatternTimingViewProps {
     analysis: PatternTimingAnalysis;
 }
 
 export const PatternTimingView: React.FC<PatternTimingViewProps> = ({ analysis }) => {
-    const { hotStreakAnalysis, dormancyBreakAnalysis, seasonalTransitionAnalysis } = analysis;
+    const { hotStreakAnalysis, dormancyBreakAnalysis, seasonalTransitionAnalysis, rhythmAnalysis } = analysis;
 
     const seasonalTransitionData = seasonalTransitionAnalysis.monthlyTransitions.map(t => ({
         name: t.toPeriod,
@@ -33,6 +32,10 @@ export const PatternTimingView: React.FC<PatternTimingViewProps> = ({ analysis }
                     </div>
                 </div>
             </div>
+
+            {rhythmAnalysis && rhythmAnalysis.length > 0 && (
+                <NumberRhythmPanel rhythmAnalysis={rhythmAnalysis} />
+            )}
 
             <PatternCard
                 title="Hot Streak Analyse"

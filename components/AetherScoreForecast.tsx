@@ -1,4 +1,6 @@
 
+
+
 import React from 'react';
 import type { AetherScoreData, AetherScoreResult, AetherStarScoreResult, AetherScoreBreakdown } from '../types';
 import { TargetIcon } from './icons/TargetIcon';
@@ -48,36 +50,8 @@ const AetherScoreTable: React.FC<AetherScoreTableProps> = ({ title, data, number
                                     </div>
                                 </td>
                                 <td className="p-2 text-brand-text-secondary text-xs">
-                                    <div className="flex items-center gap-1.5">
-                                        <span>{item.justification}</span>
-                                        {'companion' in item.breakdown && (
-                                            <div className="relative group flex-shrink-0">
-                                                <InfoIcon className="w-4 h-4 text-brand-text-secondary cursor-pointer" />
-                                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64
-                                                                bg-brand-bg border border-brand-border rounded-lg p-3 text-xs text-left
-                                                                opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity z-10
-                                                                shadow-lg">
-                                                    <p className="font-bold text-brand-text-primary mb-2">Aether Score Breakdown</p>
-                                                    <ul className="space-y-1 text-brand-text-secondary">
-                                                        {(item.breakdown as AetherScoreBreakdown).frequency !== undefined && <li>Frekvens: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).frequency.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).dormancy !== undefined && <li>Dvale: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).dormancy.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).zone !== undefined && <li>Zone: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).zone.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).companion !== undefined && <li>Følgetal: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).companion.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).momentum !== undefined && <li>Momentum: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).momentum!.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).clusterStrength !== undefined && <li>Klynge-Styrke: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).clusterStrength!.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).stability !== undefined && <li>Stabilitet: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).stability!.toFixed(0)}</span></li>}
-                                                        {(item.breakdown as AetherScoreBreakdown).seasonal && (item.breakdown as AetherScoreBreakdown).seasonal! > 0 && 
-                                                            <li>Sæson: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).seasonal!.toFixed(0)}</span></li>
-                                                        }
-                                                        {(item.breakdown as AetherScoreBreakdown).postDormancy && (item.breakdown as AetherScoreBreakdown).postDormancy! > 0 && 
-                                                            <li>Post-Dvale Bonus: <span className="font-mono float-right text-brand-text-primary">{(item.breakdown as AetherScoreBreakdown).postDormancy!.toFixed(0)}</span></li>
-                                                        }
-                                                    </ul>
-                                                    <hr className="my-2 border-brand-border" />
-                                                    <p className="font-bold text-brand-text-primary">Samlet Score: <span className="font-mono float-right">{item.score.toFixed(0)}</span></p>
-                                                </div>
-                                            </div>
-                                        )}
+                                    <div className="flex items-center gap-1.5" title="Se 'Aether Score DNA' panelet nedenfor for en fuld dekonstruktion.">
+                                        {item.justification}
                                     </div>
                                 </td>
                             </tr>

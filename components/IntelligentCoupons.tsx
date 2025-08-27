@@ -13,6 +13,15 @@ const NumberSet: React.FC<{ numbers: number[], color: string }> = ({ numbers, co
     </div>
 );
 
+const getConfidenceColor = (level: 'High' | 'Medium' | 'Low') => {
+    switch(level) {
+        case 'High': return 'bg-green-500/20 text-green-300';
+        case 'Medium': return 'bg-blue-500/20 text-blue-300';
+        case 'Low': return 'bg-yellow-500/20 text-yellow-300';
+        default: return 'bg-gray-500/20 text-gray-300';
+    }
+};
+
 export const IntelligentCoupons: React.FC<{ coupons: IntelligentCoupon[] }> = ({ coupons }) => {
     if (!coupons || coupons.length === 0) return null;
 
@@ -42,6 +51,7 @@ export const IntelligentCoupons: React.FC<{ coupons: IntelligentCoupon[] }> = ({
                                 <th scope="col" className="p-4">Hovedtal</th>
                                 <th scope="col" className="p-4">Stjernetal</th>
                                 <th scope="col" className="p-4">Kupon Score</th>
+                                <th scope="col" className="p-4">Konfidens</th>
                                 <th scope="col" className="p-4">Begrundelse</th>
                             </tr>
                         </thead>
@@ -64,6 +74,19 @@ export const IntelligentCoupons: React.FC<{ coupons: IntelligentCoupon[] }> = ({
                                             <span className="font-semibold text-brand-text-primary w-12">{coupon.score.toFixed(0)}</span>
                                             <div className="w-full bg-brand-border rounded-full h-2.5">
                                                 <div className="bg-brand-primary h-2.5 rounded-full" style={{ width: `${Math.max(0, (coupon.score / maxScore)) * 100}%` }}></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="relative group">
+                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getConfidenceColor(coupon.confidence.level)}`}>
+                                                {coupon.confidence.level}
+                                            </span>
+                                            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64
+                                                            bg-brand-bg border border-brand-border rounded-lg p-3 text-xs text-left
+                                                            opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity z-10
+                                                            shadow-lg">
+                                                {coupon.confidence.justification}
                                             </div>
                                         </div>
                                     </td>

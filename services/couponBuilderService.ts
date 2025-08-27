@@ -1,5 +1,5 @@
 
-import type { AetherScoreData, PatternAnalysis, IntelligentCoupon } from '../types';
+import type { AetherScoreData, PatternAnalysis, IntelligentCoupon, AnalysisRegime } from '../types';
 import { MAIN_NUMBER_COUNT, STAR_NUMBER_COUNT } from '../constants';
 
 /**
@@ -31,7 +31,12 @@ function combinations<T>(source: T[], k: number): T[][] {
     return result;
 }
 
-export const buildIntelligentCoupons = (aetherScores: AetherScoreData, patternAnalysis: PatternAnalysis): IntelligentCoupon[] => {
+export const buildIntelligentCoupons = (
+    aetherScores: AetherScoreData, 
+    patternAnalysis: PatternAnalysis,
+    detectedRegime: AnalysisRegime,
+    regimeShiftDetected: boolean,
+): IntelligentCoupon[] => {
     // --- MAIN NUMBERS ---
     const top20Main = aetherScores.mainNumberScores.slice(0, 20);
     const top20MainNumbers = top20Main.map(s => s.number);
@@ -144,17 +149,48 @@ export const buildIntelligentCoupons = (aetherScores: AetherScoreData, patternAn
     const rankedStarPairs = scoredStarPairs.sort((a, b) => b.score - a.score).slice(0, 10);
 
     // --- COMBINE ---
-    const finalCoupons: IntelligentCoupon[] = [];
+    const finalCoupons: Omit<IntelligentCoupon, 'rank'>[] = [];
     for (let i = 0; i < Math.min(rankedMainCoupons.length, rankedStarPairs.length); i++) {
         const mainCoupon = rankedMainCoupons[i];
         const starPair = rankedStarPairs[i];
         
+        // --- Confidence Calculation ---
+        let confidenceLevel: 'High' | 'Medium' | 'Low' = 'Medium';
+        let confidenceJustification = '';
+        
+        const totalAetherScore = aetherScores.mainNumberScores
+            .filter(s => mainCoupon.mainNumbers.includes(s.number))
+            .reduce((sum, s) => sum + s.score, 0);
+        const avgMainScore = totalAetherScore / MAIN_NUMBER_COUNT;
+        const scoreOfTopRankedNumber = aetherScores.mainNumberScores[0].score;
+        const scoreStrength = scoreOfTopRankedNumber > 0 ? avgMainScore / scoreOfTopRankedNumber : 0;
+
+        const antiPopCount = mainCoupon.mainNumbers.filter(n => n > 31).length;
+        const hasStrongAntiPop = antiPopCount >= 3;
+
+        if (regimeShiftDetected || detectedRegime === 'Volatile') {
+            confidenceLevel = 'Low';
+            confidenceJustification = 'Markedet er ustabilt eller har skiftet, hvilket reducerer prognosens pålidelighed.';
+        } else if (scoreStrength > 0.8 && hasStrongAntiPop) {
+            confidenceLevel = 'High';
+            confidenceJustification = 'Kombinerer en exceptionelt høj Aether Score med en stærk anti-popularitets profil.';
+        } else if (scoreStrength > 0.8 || hasStrongAntiPop) {
+            confidenceLevel = 'Medium';
+            confidenceJustification = scoreStrength > 0.8 ? 'Baseret på en stærk Aether Score.' : 'Baseret på en stærk anti-popularitets profil.';
+        } else {
+            confidenceLevel = 'Low';
+            confidenceJustification = 'En balanceret kombination uden en enkeltstående, markant styrkefaktor.';
+        }
+
         finalCoupons.push({
-            rank: i + 1,
             mainNumbers: mainCoupon.mainNumbers,
             starNumbers: starPair.starNumbers,
             score: mainCoupon.score + starPair.score,
-            justification: mainCoupon.justification
+            justification: mainCoupon.justification,
+            confidence: {
+                level: confidenceLevel,
+                justification: confidenceJustification,
+            }
         });
     }
 
